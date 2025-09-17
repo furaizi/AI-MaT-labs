@@ -51,7 +51,7 @@ or_prob  = A + B - A * B
 
 not_A = 1.0 - A
 
-OUT = "lab1_figs"
+OUT = "../output"
 os.makedirs(OUT, exist_ok=True)
 
 def save_plot(x, curves, title, fname):
