@@ -11,8 +11,8 @@ params = {
     "gaussmf": {"mean": 5.0, "sigma": 1.2},
     "gauss2mf": {"mean1": 3.0, "sigma1": 0.8, "mean2": 7.0, "sigma2": 1.0},
     "gbellmf": {"a": 1.5, "b": 2.5, "c": 6.0},
-    "sig_right": {"b": 3.0, "c": 5.0},    # відкрита праворуч
-    "sig_left": {"b": -3.0, "c": 5.0},    # відкрита ліворуч
+    "sig_right": {"b": 3.0, "c": 5.0},
+    "sig_left": {"b": -3.0, "c": 5.0},
     "dsigmf": {"b1": 3.0, "c1": 4.0, "b2": 3.0, "c2": 6.0},
     "psigmf": {"b1": 4.0, "c1": 3.0, "b2": -2.0, "c2": 7.0},
     "zmf": [2.0, 6.0],
@@ -37,15 +37,12 @@ y_z = fuzz.zmf(x, *params["zmf"])
 y_s = fuzz.smf(x, *params["smf"])
 y_pi = fuzz.pimf(x, *params["pimf"])
 
-# Дві базові множини для операцій
 A = fuzz.gaussmf(x, 4.0, 1.0)
 B = fuzz.gaussmf(x, 6.0, 1.5)
 
-# Мінімаксна інтерпретація
 and_min = np.minimum(A, B)
 or_max  = np.maximum(A, B)
 
-# Імовірнісна інтерпретація
 and_prod = A * B
 or_prob  = A + B - A * B
 
