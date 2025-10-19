@@ -1,0 +1,5 @@
+Model	mean_rel_err_%	median_rel_err_%
+triangular	35.2864	25.0159
+trapezoidal	33.7425	23.8919
+gaussian	57.2926	32.9590
+triangular_diagonal_only	53.1685	28.6473
