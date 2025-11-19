@@ -3,16 +3,19 @@ from tkinter import ttk, messagebox
 import numpy as np
 import math
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+
 
 
 class FeedForwardNetwork:
-    def __init__(self, hidden_layers, rng=None):
+    def __init__(self, hidden_layers, input_dim=1, rng=None):
         """
         hidden_layers: список кількостей нейронів у прихованих шарах, напр. [4, 6, 3]
-        Вхід: 1 нейрон (x), вихід: 1 нейрон (y)
+        input_dim: розмірність входу (1 для f(x), 2 для f(x, y))
+        Вихід: 1 нейрон (z)
         """
         self.hidden_layers = [int(n) for n in hidden_layers if int(n) > 0]
-        self.layer_sizes = [1] + self.hidden_layers + [1]
+        self.layer_sizes = [input_dim] + self.hidden_layers + [1]
         self.rng = rng or np.random.default_rng()
         self._init_params()
 
@@ -29,7 +32,7 @@ class FeedForwardNetwork:
 
     def forward(self, X):
         """
-        X: (n_samples, 1)
+        X: (n_samples, input_dim)
         """
         a = X
         for i, (W, b) in enumerate(zip(self.weights, self.biases)):
@@ -91,9 +94,16 @@ class StructuralGA:
         """
         Хромосома: список довжини max_layers, кожен ген – кількість нейронів у шарі (0..max_neurons_total).
         Якщо сума нейронів > max_neurons_total, архітектура штрафується.
+        x_train: (n_samples, input_dim) — тут (x, y)
+        y_train: (n_samples,) або (n_samples, 1)
         """
-        self.x_train = x_train.reshape(-1, 1)
-        self.y_train = y_train.reshape(-1, 1)
+        self.x_train = np.array(x_train, dtype=float)
+        if self.x_train.ndim == 1:
+            self.x_train = self.x_train.reshape(-1, 1)
+        self.y_train = np.array(y_train, dtype=float).reshape(-1, 1)
+
+        self.input_dim = self.x_train.shape[1]
+
         self.max_neurons_total = int(max_neurons_total)
         self.target_mse = float(target_mse)
         self.max_layers = max_layers
@@ -125,7 +135,7 @@ class StructuralGA:
             return 1e6
 
         hidden_layers = self._architecture_to_list(genes)
-        net = FeedForwardNetwork(hidden_layers, rng=self.rng)
+        net = FeedForwardNetwork(hidden_layers, input_dim=self.input_dim, rng=self.rng)
         net.train(self.x_train, self.y_train, epochs=200, lr=0.01)
         return net.mse(self.x_train, self.y_train)
 
@@ -199,7 +209,7 @@ class StructuralGA:
             self.population = np.array(new_pop, dtype=int)
 
         final_hidden_layers = self._architecture_to_list(best_overall_genes)
-        final_net = FeedForwardNetwork(final_hidden_layers, rng=self.rng)
+        final_net = FeedForwardNetwork(final_hidden_layers, input_dim=self.input_dim, rng=self.rng)
         final_net.train(self.x_train, self.y_train, epochs=300, lr=0.01)
         final_mse = final_net.mse(self.x_train, self.y_train)
         return final_hidden_layers, final_mse, final_net
@@ -208,7 +218,7 @@ class StructuralGA:
 class App:
     def __init__(self, root):
         self.root = root
-        root.title("Структурний синтез НМ за допомогою ГА")
+        root.title("Структурний синтез НМ за допомогою ГА (f(x, y))")
 
         main_frame = ttk.Frame(root, padding=10)
         main_frame.grid(row=0, column=0, sticky="nsew")
@@ -216,9 +226,9 @@ class App:
         root.columnconfigure(0, weight=1)
         root.rowconfigure(0, weight=1)
 
-        ttk.Label(main_frame, text="Функція f(x):").grid(row=0, column=0, sticky="w")
+        ttk.Label(main_frame, text="Функція f(x, y):").grid(row=0, column=0, sticky="w")
         self.func_entry = ttk.Entry(main_frame, width=40)
-        self.func_entry.insert(0, "np.cos(np.sin(x)) * np.sin(x)")
+        self.func_entry.insert(0, "np.cos(np.sin(y)) * np.sin(x)")
         self.func_entry.grid(row=0, column=1, columnspan=3, sticky="ew", pady=2)
 
         ttk.Label(main_frame, text="Інтервал x від:").grid(row=1, column=0, sticky="w")
@@ -231,23 +241,34 @@ class App:
         self.x_to_entry.insert(0, "5.0")
         self.x_to_entry.grid(row=1, column=3, sticky="w", pady=2)
 
-        ttk.Label(main_frame, text="Кількість навчальних точок:").grid(row=2, column=0, sticky="w")
-        self.n_points_entry = ttk.Entry(main_frame, width=10)
-        self.n_points_entry.insert(0, "50")
-        self.n_points_entry.grid(row=2, column=1, sticky="w", pady=2)
+        ttk.Label(main_frame, text="Інтервал y від:").grid(row=2, column=0, sticky="w")
+        self.y_from_entry = ttk.Entry(main_frame, width=10)
+        self.y_from_entry.insert(0, "0.0")
+        self.y_from_entry.grid(row=2, column=1, sticky="w", pady=2)
 
-        ttk.Label(main_frame, text="Максимальна кількість нейронів (всього):").grid(row=3, column=0, sticky="w")
+        ttk.Label(main_frame, text="до:").grid(row=2, column=2, sticky="w")
+        self.y_to_entry = ttk.Entry(main_frame, width=10)
+        self.y_to_entry.insert(0, "5.0")
+        self.y_to_entry.grid(row=2, column=3, sticky="w", pady=2)
+
+        ttk.Label(main_frame, text="Кількість точок по кожній осі:").grid(row=3, column=0, sticky="w")
+        self.n_points_entry = ttk.Entry(main_frame, width=10)
+        self.n_points_entry.insert(0, "25")  # 25x25 = 625 точок
+        self.n_points_entry.grid(row=3, column=1, sticky="w", pady=2)
+
+        ttk.Label(main_frame, text="Максимальна кількість нейронів (всього):").grid(row=4, column=0, sticky="w")
         self.max_neurons_entry = ttk.Entry(main_frame, width=10)
         self.max_neurons_entry.insert(0, "20")
-        self.max_neurons_entry.grid(row=3, column=1, sticky="w", pady=2)
+        self.max_neurons_entry.grid(row=4, column=1, sticky="w", pady=2)
 
-        ttk.Label(main_frame, text="Максимальна похибка (MSE):").grid(row=4, column=0, sticky="w")
+        ttk.Label(main_frame, text="Максимальна похибка (MSE):").grid(row=5, column=0, sticky="w")
         self.target_mse_entry = ttk.Entry(main_frame, width=10)
-        self.target_mse_entry.insert(0, "0.01")
-        self.target_mse_entry.grid(row=4, column=1, sticky="w", pady=2)
+        self.target_mse_entry.insert(0, "0.02")
+        self.target_mse_entry.grid(row=5, column=1, sticky="w", pady=2)
 
+        # --- Параметри ГА ---
         ga_label = ttk.LabelFrame(main_frame, text="Параметри генетичного алгоритму", padding=5)
-        ga_label.grid(row=5, column=0, columnspan=4, sticky="ew", pady=(10, 5))
+        ga_label.grid(row=6, column=0, columnspan=4, sticky="ew", pady=(10, 5))
 
         ttk.Label(ga_label, text="Розмір популяції:").grid(row=0, column=0, sticky="w")
         self.pop_size_entry = ttk.Entry(ga_label, width=10)
@@ -275,10 +296,10 @@ class App:
         self.mutation_entry.grid(row=2, column=1, sticky="w")
 
         self.start_button = ttk.Button(main_frame, text="Запустити пошук", command=self.start_search)
-        self.start_button.grid(row=6, column=0, columnspan=4, pady=(10, 5))
+        self.start_button.grid(row=7, column=0, columnspan=4, pady=(10, 5))
 
         self.result_label = ttk.Label(main_frame, text="Результат: поки що немає", foreground="blue")
-        self.result_label.grid(row=7, column=0, columnspan=4, sticky="w", pady=(5, 0))
+        self.result_label.grid(row=8, column=0, columnspan=4, sticky="w", pady=(5, 0))
 
         for i in range(4):
             main_frame.columnconfigure(i, weight=1)
@@ -313,15 +334,16 @@ class App:
         self.progress_text.see("end")
         self.progress_window.update_idletasks()
 
-    def _parse_function(self, expr, x):
+    def _parse_function(self, expr, x, y):
         """
-        Обчислює f(x) із введеного рядка expr.
-        Дозволені: np, math, sin, cos, tan, exp, log, sqrt, pi, e.
+        Обчислює f(x, y) із введеного рядка expr.
+        Дозволені: np, math, x, y, sin, cos, tan, exp, log, sqrt, pi, e.
         """
         local_dict = {
             "np": np,
             "math": math,
             "x": x,
+            "y": y,
             "sin": np.sin,
             "cos": np.cos,
             "tan": np.tan,
@@ -338,6 +360,8 @@ class App:
             expr = self.func_entry.get().strip()
             x_from = float(self.x_from_entry.get().strip())
             x_to = float(self.x_to_entry.get().strip())
+            y_from = float(self.y_from_entry.get().strip())
+            y_to = float(self.y_to_entry.get().strip())
             n_points = int(self.n_points_entry.get().strip())
             max_neurons = int(self.max_neurons_entry.get().strip())
             target_mse = float(self.target_mse_entry.get().strip())
@@ -351,21 +375,27 @@ class App:
             messagebox.showerror("Помилка вводу", "Перевірте правильність всіх числових полів.")
             return
 
-        if n_points <= 1 or x_from >= x_to:
-            messagebox.showerror("Помилка вводу", "Невірний інтервал або кількість точок.")
+        if n_points <= 1 or x_from >= x_to or y_from >= y_to:
+            messagebox.showerror("Помилка вводу", "Невірні інтервали або кількість точок.")
             return
 
-        x_train = np.linspace(x_from, x_to, n_points)
+        x_vals = np.linspace(x_from, x_to, n_points)
+        y_vals = np.linspace(y_from, y_to, n_points)
+        X_grid, Y_grid = np.meshgrid(x_vals, y_vals)
+
         try:
-            y_train = self._parse_function(expr, x_train)
+            Z = self._parse_function(expr, X_grid, Y_grid)
         except Exception as e:
-            messagebox.showerror("Помилка у виразі функції", f"Не вдалося обчислити f(x):\n{e}")
+            messagebox.showerror("Помилка у виразі функції", f"Не вдалося обчислити f(x, y):\n{e}")
             return
 
-        y_train = np.array(y_train, dtype=float)
-        if y_train.shape != x_train.shape:
-            messagebox.showerror("Помилка", "Функція повинна повертати значення того ж розміру, що й x.")
+        Z = np.array(Z, dtype=float)
+        if Z.shape != X_grid.shape:
+            messagebox.showerror("Помилка", "Функція повинна повертати значення того ж розміру, що й сітка (x, y).")
             return
+
+        XY_train = np.column_stack([X_grid.ravel(), Y_grid.ravel()])
+        z_train = Z.ravel()
 
         self._open_progress_window()
         self.progress_text.delete("1.0", "end")
@@ -379,8 +409,8 @@ class App:
         rng = np.random.default_rng(42)
 
         ga = StructuralGA(
-            x_train=x_train,
-            y_train=y_train,
+            x_train=XY_train,
+            y_train=z_train,
             max_neurons_total=max_neurons,
             target_mse=target_mse,
             max_layers=max_layers,
@@ -396,32 +426,61 @@ class App:
         arch_str_final = "без прихованих шарів" if not hidden_layers else "-".join(str(n) for n in hidden_layers)
 
         self.result_label.config(
-            text=f"Результат: архітектура 1-{arch_str_final}-1, MSE = {final_mse:.6f}",
+            text=f"Результат: архітектура 2-{arch_str_final}-1, MSE = {final_mse:.6f}",
             foreground="blue",
         )
         self.start_button.config(state="normal")
 
         messagebox.showinfo(
             "Готово",
-            f"Пошук завершено.\n\nАрхітектура: 1-{arch_str_final}-1\nФінальна MSE: {final_mse:.6f}",
+            f"Пошук завершено.\n\nАрхітектура: 2-{arch_str_final}-1\nФінальна MSE: {final_mse:.6f}",
         )
 
         try:
-            x_plot = np.linspace(x_from, x_to, 300)
-            y_target = self._parse_function(expr, x_plot)
-            y_target = np.array(y_target, dtype=float)
+            x_plot = np.linspace(x_from, x_to, 40)
+            y_plot = np.linspace(y_from, y_to, 40)
+            Xp, Yp = np.meshgrid(x_plot, y_plot)
 
-            y_pred = final_net.forward(x_plot.reshape(-1, 1)).reshape(-1)
+            # цільова поверхня
+            Z_target = self._parse_function(expr, Xp, Yp)
+            Z_target = np.array(Z_target, dtype=float)
 
-            plt.figure()
-            plt.title(f"Апроксимація f(x) нейронною мережею\nАрхітектура: 1-{arch_str_final}-1, MSE={final_mse:.5f}")
-            plt.plot(x_plot, y_target, label="f(x) — цільова функція")
-            plt.plot(x_plot, y_pred, linestyle="--", label="NN(x) — апроксимація")
-            plt.xlabel("x")
-            plt.ylabel("y")
-            plt.legend()
-            plt.grid(True)
+            # апроксимація нейромережею
+            XY_plot = np.column_stack([Xp.ravel(), Yp.ravel()])
+            Z_pred = final_net.forward(XY_plot).reshape(Xp.shape)
+
+            fig = plt.figure(figsize=(8, 6))
+            ax = fig.add_subplot(111, projection='3d')
+
+            # дві поверхні на ОДНОМУ графіку, різні кольори
+            surf_target = ax.plot_surface(
+                Xp, Yp, Z_target,
+                alpha=0.7,
+                color="tab:blue"
+            )
+            surf_pred = ax.plot_surface(
+                Xp, Yp, Z_pred,
+                alpha=0.7,
+                color="tab:orange"
+            )
+
+            ax.set_title(f"Структурний синтез: 2-{arch_str_final}-1, MSE={final_mse:.5f}")
+            ax.set_xlabel("x")
+            ax.set_ylabel("y")
+            ax.set_zlabel("z")
+
+            # Легенда (проксі-об'єкти, бо plot_surface напряму в легенді не відображається)
+            proxy_target = Line2D([0], [0], linestyle="none", marker="s",
+                                  markersize=10, color="tab:blue")
+            proxy_pred = Line2D([0], [0], linestyle="none", marker="s",
+                                markersize=10, color="tab:orange")
+            ax.legend([proxy_target, proxy_pred],
+                      ["f(x, y) — цільова", "NN(x, y) — апроксимація"],
+                      loc="upper left")
+
+            plt.tight_layout()
             plt.show()
+
         except Exception as e:
             messagebox.showwarning(
                 "Помилка побудови графіка",
