@@ -2,6 +2,8 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import numpy as np
 import math
+import matplotlib.pyplot as plt
+
 
 class FeedForwardNetwork:
     def __init__(self, hidden_layers, rng=None):
@@ -200,7 +202,7 @@ class StructuralGA:
         final_net = FeedForwardNetwork(final_hidden_layers, rng=self.rng)
         final_net.train(self.x_train, self.y_train, epochs=300, lr=0.01)
         final_mse = final_net.mse(self.x_train, self.y_train)
-        return final_hidden_layers, final_mse
+        return final_hidden_layers, final_mse, final_net
 
 
 class App:
@@ -390,7 +392,7 @@ class App:
             progress_callback=self._log_progress,
         )
 
-        hidden_layers, final_mse = ga.run()
+        hidden_layers, final_mse, final_net = ga.run()
         arch_str_final = "без прихованих шарів" if not hidden_layers else "-".join(str(n) for n in hidden_layers)
 
         self.result_label.config(
@@ -403,6 +405,28 @@ class App:
             "Готово",
             f"Пошук завершено.\n\nАрхітектура: 1-{arch_str_final}-1\nФінальна MSE: {final_mse:.6f}",
         )
+
+        try:
+            x_plot = np.linspace(x_from, x_to, 300)
+            y_target = self._parse_function(expr, x_plot)
+            y_target = np.array(y_target, dtype=float)
+
+            y_pred = final_net.forward(x_plot.reshape(-1, 1)).reshape(-1)
+
+            plt.figure()
+            plt.title(f"Апроксимація f(x) нейронною мережею\nАрхітектура: 1-{arch_str_final}-1, MSE={final_mse:.5f}")
+            plt.plot(x_plot, y_target, label="f(x) — цільова функція")
+            plt.plot(x_plot, y_pred, linestyle="--", label="NN(x) — апроксимація")
+            plt.xlabel("x")
+            plt.ylabel("y")
+            plt.legend()
+            plt.grid(True)
+            plt.show()
+        except Exception as e:
+            messagebox.showwarning(
+                "Помилка побудови графіка",
+                f"Апроксимація обчислена, але виникла помилка при побудові графіка:\n{e}",
+            )
 
 
 def main():
